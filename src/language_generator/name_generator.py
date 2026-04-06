@@ -26,6 +26,8 @@ class NameGenerator:
         self.phonology = phonology
         self.lexicon = lexicon
         params = name_params if name_params else self.DEFAULT_NAME_PARAMS
+        self.evaluator = params.get('evaluator')
+        self.min_pronounceability_score = int(params.get('min_pronounceability_score', 58))
         self.person_min_syl = params.get('person_min_syl', 2)
         self.person_max_syl = params.get('person_max_syl', 3)
         self.place_min_syl = params.get('place_min_syl', 2)
@@ -42,24 +44,36 @@ class NameGenerator:
         self.thing_suffix_prob = params.get('thing_suffix_prob', 0.3)
         self.max_attempts = params.get('max_attempts', 100)
 
+    def _is_candidate_acceptable(self, candidate):
+        if not candidate:
+            return False
+        if self.evaluator is None:
+            return True
+        return self.evaluator.is_acceptable(candidate, min_score=self.min_pronounceability_score)
+
     def _generate_base_candidate(self, min_syl, max_syl):
         num_syllables = random.randint(min_syl, max_syl)
-        if num_syllables <= 0: return None
-        syllables = []
-        for _ in range(num_syllables):
-            syllable = self.phonology.generate_syllable()
-            if syllable is None: return None
-            syllables.append(syllable)
-        base = "".join(syllables)
-        if base and self.phonology.is_valid_sequence(base):
+        if num_syllables <= 0:
+            return None
+
+        base = self.phonology.generate_word(
+            min_syllables=num_syllables,
+            max_syllables=num_syllables,
+            max_tries=20,
+        )
+        if (
+            base
+            and self.phonology.is_valid_sequence(base)
+            and self._is_candidate_acceptable(base)
+        ):
             return base
         return None
 
-    @staticmethod
-    def _add_suffix(base_name, suffix_list, probability):
+    def _add_suffix(self, base_name, suffix_list, probability):
         if base_name and suffix_list and random.random() < probability:
             suffix = random.choice(suffix_list)
-            return base_name + suffix
+            candidate = self.phonology.join_segments(base_name, suffix)
+            return candidate if candidate else base_name
         return base_name
 
     def generate_person_name(self, gender=None):
@@ -75,7 +89,11 @@ class NameGenerator:
                 final_name = self._add_suffix(base, self.person_neutral_suffixes, self.person_suffix_prob)
             elif self.person_neutral_suffixes and random.random() < self.person_suffix_prob / 2:
                 final_name = self._add_suffix(base, self.person_neutral_suffixes, 1.0)
-            if final_name and not self.lexicon.get_entry(final_name):
+            if (
+                final_name
+                and self._is_candidate_acceptable(final_name)
+                and not self.lexicon.get_entry(final_name)
+            ):
                 return final_name
 
         return None
@@ -93,6 +111,10 @@ class NameGenerator:
             base = self._generate_base_candidate(min_syl, max_syl)
             if not base: continue
             final_name = self._add_suffix(base, suffixes, suffix_prob)
-            if final_name and not self.lexicon.get_entry(final_name):
+            if (
+                final_name
+                and self._is_candidate_acceptable(final_name)
+                and not self.lexicon.get_entry(final_name)
+            ):
                 return final_name
         return None

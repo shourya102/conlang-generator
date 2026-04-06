@@ -1,0 +1,28 @@
+# Python caches and bytecode
+__pycache__/
+*.py[cod]
+
+# Python virtual environments
+.venv/
+venv/
+
+# Python tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local build outputs
+build/
+dist/
+
+# Logs
+*.log
+
+# GUI frontend artifacts
+gui/node_modules/
+gui/dist/
+gui/.vite/
+
+# IDE metadata
+.idea/
+.vscode/

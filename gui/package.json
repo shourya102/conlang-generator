@@ -1,0 +1,80 @@
+{
+  "name": "conlang-studio-gui",
+  "version": "0.1.0",
+  "description": "Conlang Studio desktop GUI",
+  "author": "shour",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
+    "start": "electron .",
+    "build": "vite build",
+    "build:desktop": "npm run build && electron-builder --win --dir",
+    "build:desktop:installer": "npm run build && electron-builder --win nsis portable",
+    "build:desktop:dir": "npm run build && electron-builder --win --dir",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.13.0",
+    "@emotion/styled": "^11.13.0",
+    "@mui/icons-material": "^5.16.7",
+    "@mui/material": "^5.16.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3",
+    "vite": "^5.4.10",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.conlangstudio.desktop",
+    "productName": "Conlang Studio",
+    "artifactName": "conlang-studio-${version}-${arch}.${ext}",
+    "icon": "../icon.ico",
+    "directories": {
+      "output": "../dist/desktop",
+      "buildResources": "electron"
+    },
+    "asar": true,
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../src",
+        "to": "backend/src",
+        "filter": [
+          "gui_bridge.py",
+          "language_generator/**/*",
+          "languages/**/*"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "../icon.ico",
+      "executableName": "conlang-studio-desktop",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
+  }
+}

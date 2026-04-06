@@ -18,20 +18,27 @@ class Lexicon:
             print("Lexicon initialized empty")
         print("-" * 20)
 
+    def _normalize_english_key(self, english_word):
+        if english_word is None:
+            return ''
+        return str(english_word).strip().lower()
+
     def _rebuild_reverse_lookup(self):
         self.english_to_conlang = {}
         for conlang_word, entry_data in self.entries.items():
             eng_meaning = entry_data.get('english_meaning')
-            if eng_meaning:
-                if eng_meaning in self.english_to_conlang and self.english_to_conlang[eng_meaning] != conlang_word:
+            eng_key = self._normalize_english_key(eng_meaning)
+            if eng_key:
+                if eng_key in self.english_to_conlang and self.english_to_conlang[eng_key] != conlang_word:
                     print(f"Warning: Duplicate English meaning '{eng_meaning}' for words "
-                          f"'{self.english_to_conlang[eng_meaning]}' and '{conlang_word}'.")
-                elif eng_meaning not in self.english_to_conlang:
-                    self.english_to_conlang[eng_meaning] = conlang_word
+                          f"'{self.english_to_conlang[eng_key]}' and '{conlang_word}'.")
+                elif eng_key not in self.english_to_conlang:
+                    self.english_to_conlang[eng_key] = conlang_word
 
     def add_entry(self, entry_data):
         conlang_word = entry_data.get('word')
         eng_meaning = entry_data.get('english_meaning')
+        eng_key = self._normalize_english_key(eng_meaning)
         if not conlang_word:
             print("Warning: Cannot add entry without 'word' key.")
             return False
@@ -44,8 +51,8 @@ class Lexicon:
                 print(f"Error: Conlang word '{conlang_word}' already exists but with a different meaning "
                       f"('{existing_meaning}' vs '{eng_meaning}'). Cannot add.")
                 return False
-        if eng_meaning and eng_meaning in self.english_to_conlang:
-            existing_conlang_word = self.english_to_conlang[eng_meaning]
+        if eng_key and eng_key in self.english_to_conlang:
+            existing_conlang_word = self.english_to_conlang[eng_key]
             if existing_conlang_word != conlang_word:
                 print(f"Error: English meaning '{eng_meaning}' is already translated as '{existing_conlang_word}'. "
                       f"Cannot add new translation '{conlang_word}'.")
@@ -59,12 +66,12 @@ class Lexicon:
             'part_of_speech': entry_data.get('part_of_speech', None)
         }
         self.entries[conlang_word] = full_entry
-        if eng_meaning:
-            self.english_to_conlang[eng_meaning] = conlang_word
+        if eng_key:
+            self.english_to_conlang[eng_key] = conlang_word
         return True
 
     def find_by_english(self, english_word):
-        return self.english_to_conlang.get(english_word, None)
+        return self.english_to_conlang.get(self._normalize_english_key(english_word), None)
 
     def get_entry(self, conlang_word):
         return self.entries.get(conlang_word, None)

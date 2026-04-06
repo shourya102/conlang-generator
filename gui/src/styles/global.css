@@ -1,0 +1,92 @@
+:root {
+  color-scheme: dark;
+  --thin-scrollbar-thumb: rgba(216, 131, 79, 0.56);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: "Segoe UI Variable", "Segoe UI", "Noto Sans", sans-serif;
+}
+
+.title-bar {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  -webkit-app-region: drag;
+}
+
+.title-bar-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+.thin-scrollbar {
+  overflow: auto;
+}
+
+.thin-scrollbar,
+.MuiMenu-paper,
+.MuiPopover-paper,
+.MuiAutocomplete-paper,
+.MuiAutocomplete-listbox,
+.MuiMenu-list,
+[role='listbox'] {
+  scrollbar-width: thin;
+  scrollbar-color: var(--thin-scrollbar-thumb) transparent;
+}
+
+.thin-scrollbar::-webkit-scrollbar,
+.MuiMenu-paper::-webkit-scrollbar,
+.MuiPopover-paper::-webkit-scrollbar,
+.MuiAutocomplete-paper::-webkit-scrollbar,
+.MuiAutocomplete-listbox::-webkit-scrollbar,
+.MuiMenu-list::-webkit-scrollbar,
+[role='listbox']::-webkit-scrollbar {
+  width: 2px;
+  height: 2px;
+}
+
+.thin-scrollbar::-webkit-scrollbar-track,
+.MuiMenu-paper::-webkit-scrollbar-track,
+.MuiPopover-paper::-webkit-scrollbar-track,
+.MuiAutocomplete-paper::-webkit-scrollbar-track,
+.MuiAutocomplete-listbox::-webkit-scrollbar-track,
+.MuiMenu-list::-webkit-scrollbar-track,
+[role='listbox']::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.thin-scrollbar::-webkit-scrollbar-thumb,
+.MuiMenu-paper::-webkit-scrollbar-thumb,
+.MuiPopover-paper::-webkit-scrollbar-thumb,
+.MuiAutocomplete-paper::-webkit-scrollbar-thumb,
+.MuiAutocomplete-listbox::-webkit-scrollbar-thumb,
+.MuiMenu-list::-webkit-scrollbar-thumb,
+[role='listbox']::-webkit-scrollbar-thumb {
+  background: var(--thin-scrollbar-thumb);
+  border-radius: 999px;
+}
+
+.thin-scrollbar::-webkit-scrollbar-button,
+.MuiMenu-paper::-webkit-scrollbar-button,
+.MuiPopover-paper::-webkit-scrollbar-button,
+.MuiAutocomplete-paper::-webkit-scrollbar-button,
+.MuiAutocomplete-listbox::-webkit-scrollbar-button,
+.MuiMenu-list::-webkit-scrollbar-button,
+[role='listbox']::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}

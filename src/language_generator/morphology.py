@@ -51,22 +51,19 @@ class Morphology:
         morphemes = set()
         max_attempts = count * max_tries_mult
         attempts = 0
-        while attempts < max_attempts:
+        while attempts < max_attempts and len(morphemes) < count:
             attempts += 1
             num_syllables = random.randint(min_syl, max_syl)
-            if num_syllables <= 0: continue
-            morpheme_syllables = []
-            valid_morpheme = True
-            for _ in range(num_syllables):
-                syllable = self.phonology.generate_syllable()
-                if not syllable:
-                    valid_morpheme = False
-                    break
-                morpheme_syllables.append(syllable)
-            if valid_morpheme:
-                morpheme = "".join(morpheme_syllables)
-                if morpheme and self.phonology.is_valid_sequence(morpheme):
-                    morphemes.add(morpheme)
+            if num_syllables <= 0:
+                continue
+
+            morpheme = self.phonology.generate_word(
+                min_syllables=num_syllables,
+                max_syllables=num_syllables,
+                max_tries=20,
+            )
+            if morpheme and self.phonology.is_valid_sequence(morpheme):
+                morphemes.add(morpheme)
         if len(morphemes) < count:
             print(
                 f"Warning: Only generated {len(morphemes)} unique {morpheme_type}s "
