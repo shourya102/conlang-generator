@@ -40,6 +40,44 @@ class Language:
     DEFAULT_GRAMMAR_PARAMS = copy.deepcopy(BASE_DEFAULT_GRAMMAR_PARAMS)
     DEFAULT_SOUND_CHANGE_RULES = copy.deepcopy(BASE_DEFAULT_SOUND_CHANGE_RULES)
 
+    TOKEN_NORMALIZATION_ALIASES = {
+        'havnt': "haven't",
+        "havn't": "haven't",
+        'havent': "haven't",
+        'hasnt': "hasn't",
+        'hadnt': "hadn't",
+        'dont': "don't",
+        'doesnt': "doesn't",
+        'didnt': "didn't",
+        'cant': "can't",
+        'wont': "won't",
+        'isnt': "isn't",
+        'arent': "aren't",
+        'wasnt': "wasn't",
+        'werent': "weren't",
+        'shouldve': "should've",
+        'wouldve': "would've",
+        'couldve': "could've",
+        'mustve': "must've",
+        'im': "i'm",
+        'youre': "you're",
+        'theyre': "they're",
+        'ive': "i've",
+        'youve': "you've",
+        'weve': "we've",
+        'theyve': "they've",
+    }
+
+    CONTRACTION_SUFFIX_EXPANSIONS = {
+        "n't": 'not',
+        "'ve": 'have',
+        "'re": 'be',
+        "'m": 'be',
+        "'ll": 'will',
+        "'d": 'would',
+        "'s": 'be',
+    }
+
     def __init__(
         self,
         phonology=None,
@@ -295,6 +333,57 @@ class Language:
         except Exception:
             self.nltk_enabled = False
 
+    def _normalize_english_token(self, token):
+        normalized = str(token or '').strip().lower()
+        if not normalized:
+            return ''
+
+        normalized = normalized.replace('’', "'").replace('‘', "'").replace('`', "'")
+        normalized = re.sub(r"^[^a-z0-9']+|[^a-z0-9']+$", '', normalized)
+        if not normalized:
+            return ''
+
+        return self.TOKEN_NORMALIZATION_ALIASES.get(normalized, normalized)
+
+    def _english_lookup_forms(self, token):
+        normalized = self._normalize_english_token(token)
+        if not normalized:
+            return []
+
+        forms = [normalized]
+        no_apostrophe = normalized.replace("'", '')
+        if no_apostrophe and no_apostrophe not in forms:
+            forms.append(no_apostrophe)
+
+        for suffix, expansion in self.CONTRACTION_SUFFIX_EXPANSIONS.items():
+            if normalized.endswith(suffix) and len(normalized) > len(suffix):
+                stem = normalized[:-len(suffix)]
+                if suffix == "n't":
+                    if stem == 'ca':
+                        stem = 'can'
+                    elif stem == 'wo':
+                        stem = 'will'
+                if stem and stem not in forms:
+                    forms.append(stem)
+                if expansion and expansion not in forms:
+                    forms.append(expansion)
+
+        return forms
+
+    def _is_contraction_like(self, token):
+        normalized = self._normalize_english_token(token)
+        if not normalized:
+            return False
+
+        if normalized in self.TOKEN_NORMALIZATION_ALIASES.values() and "'" in normalized:
+            return True
+
+        for suffix in self.CONTRACTION_SUFFIX_EXPANSIONS:
+            if normalized.endswith(suffix) and len(normalized) > len(suffix):
+                return True
+
+        return False
+
     def _map_nltk_tag(self, nltk_tag):
         tag = str(nltk_tag).upper()
         if tag.startswith('NN'):
@@ -330,6 +419,8 @@ class Language:
     def _simple_tag_for_token(self, token, is_sentence_start=False):
         if not token:
             return 'NN'
+
+        normalized = self._normalize_english_token(token)
 
         if token.isdigit():
             return 'CD'
@@ -376,6 +467,7 @@ class Language:
             'my': 'PRP$',
             'your': 'PRP$',
             'his': 'PRP$',
+            'its': 'PRP$',
             'our': 'PRP$',
             'their': 'PRP$',
 
@@ -428,6 +520,54 @@ class Language:
             'might': 'VB',
             'must': 'VB',
 
+            "it's": 'VB',
+            "i'm": 'VB',
+            "you're": 'VB',
+            "we're": 'VB',
+            "they're": 'VB',
+            "he's": 'VB',
+            "she's": 'VB',
+            "that's": 'VB',
+            "there's": 'VB',
+            "what's": 'VB',
+            "who's": 'VB',
+            "can't": 'VB',
+            "won't": 'VB',
+            "don't": 'VB',
+            "doesn't": 'VB',
+            "didn't": 'VB',
+            "isn't": 'VB',
+            "aren't": 'VB',
+            "wasn't": 'VB',
+            "weren't": 'VB',
+            "haven't": 'VB',
+            "hasn't": 'VB',
+            "hadn't": 'VB',
+            "should've": 'VB',
+            "would've": 'VB',
+            "could've": 'VB',
+            "must've": 'VB',
+            "i've": 'VB',
+            "you've": 'VB',
+            "we've": 'VB',
+            "they've": 'VB',
+            "i'll": 'VB',
+            "you'll": 'VB',
+            "we'll": 'VB',
+            "they'll": 'VB',
+            "i'd": 'VB',
+            "you'd": 'VB',
+            "we'd": 'VB',
+            "they'd": 'VB',
+            "let's": 'VB',
+            "n't": 'RB',
+            "'ve": 'VB',
+            "'re": 'VB',
+            "'m": 'VB',
+            "'ll": 'VB',
+            "'d": 'VB',
+            "'s": 'VB',
+
             'not': 'RB',
             'never': 'RB',
             'here': 'RB',
@@ -437,44 +577,63 @@ class Language:
             'always': 'RB',
         }
 
-        lowered = token.lower()
-        if lowered in function_word_tags:
-            return function_word_tags[lowered]
+        lookup_forms = self._english_lookup_forms(token)
+        for form in lookup_forms:
+            if form in function_word_tags:
+                return function_word_tags[form]
 
-        mapped = CORE_CONCEPTS.get(lowered)
-        if token[:1].isupper() and lowered not in {'i'}:
+        mapped = None
+        for form in lookup_forms:
+            mapped = CORE_CONCEPTS.get(form)
+            if mapped:
+                break
+
+        if token[:1].isupper() and normalized not in {'i'} and not self._is_contraction_like(token):
             if mapped in pos_to_nltk and mapped != 'ProperNoun':
                 return pos_to_nltk[mapped]
 
-            existing_word = self.lexicon.find_by_english(lowered)
-            if existing_word:
-                existing_entry = self.lexicon.get_entry(existing_word) or {}
-                existing_pos = str(existing_entry.get('part_of_speech') or '').strip()
-                if existing_pos in pos_to_nltk:
-                    return pos_to_nltk[existing_pos]
+            for form in lookup_forms:
+                existing_word = self.lexicon.find_by_english(form)
+                if existing_word:
+                    existing_entry = self.lexicon.get_entry(existing_word) or {}
+                    existing_pos = str(existing_entry.get('part_of_speech') or '').strip()
+                    if existing_pos in pos_to_nltk:
+                        return pos_to_nltk[existing_pos]
 
             return 'NNP'
 
         if mapped in pos_to_nltk:
             return pos_to_nltk[mapped]
 
-        if lowered.endswith('ly'):
+        if normalized.endswith('ly'):
             return 'RB'
-        if lowered.endswith(('ing', 'ed')):
+        if normalized.endswith(('ing', 'ed')):
             return 'VB'
-        if lowered.endswith(('ous', 'al', 'ive', 'ful', 'less')):
+        if normalized.endswith(('ous', 'al', 'ive', 'ful', 'less')):
             return 'JJ'
+
+        if self._is_contraction_like(token):
+            if normalized.endswith("n't"):
+                return 'RB'
+            return 'VB'
+
         return 'NN'
 
     def _tokenize_and_tag(self, english_text):
+        normalized_text = str(english_text or '').replace('’', "'").replace('‘', "'").replace('`', "'")
+
         if self.nltk_enabled and nltk is not None:
             try:
-                tokens = nltk.word_tokenize(english_text)
-                return nltk.pos_tag(tokens)
+                tokens = nltk.word_tokenize(normalized_text)
+                tagged_tokens = nltk.pos_tag(tokens)
+                return [
+                    (str(token).replace('’', "'").replace('‘', "'").replace('`', "'"), tag)
+                    for token, tag in tagged_tokens
+                ]
             except Exception:
                 self.nltk_enabled = False
 
-        tokens = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?|\d+|[^\w\s]", english_text)
+        tokens = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)*|\d+|[^\w\s]", normalized_text)
         tagged = []
         sentence_endings = {'.', '?', '!'}
         auxiliary_words = {
@@ -510,7 +669,7 @@ class Language:
             elif len(token) == 1 and not token.isalnum():
                 tag = token
             else:
-                lowered = token.lower()
+                lowered = self._normalize_english_token(token) or token.lower()
                 if lowered == 'to':
                     tag = 'TO'
                 elif lowered in auxiliary_words:
@@ -546,7 +705,7 @@ class Language:
                     previous_tag = 'CD'
                 else:
                     pre_previous_word = previous_word
-                    previous_word = token.lower()
+                    previous_word = self._normalize_english_token(token) or token.lower()
                     previous_tag = tag
 
         return tagged
@@ -575,21 +734,28 @@ class Language:
         if not tag_value.startswith('NNP'):
             return False
 
-        lowered = str(word or '').strip().lower()
-        if not lowered:
+        lookup_forms = self._english_lookup_forms(word)
+        if not lookup_forms:
             return False
 
-        mapped = CORE_CONCEPTS.get(lowered)
-        if mapped and mapped != 'ProperNoun':
+        lowered = lookup_forms[0]
+
+        if self._is_contraction_like(word):
             return False
 
-        existing_word = self.lexicon.find_by_english(lowered)
-        if existing_word:
-            existing_entry = self.lexicon.get_entry(existing_word) or {}
-            existing_pos = str(existing_entry.get('part_of_speech') or '').strip()
-            if existing_pos and existing_pos != 'ProperNoun':
+        for form in lookup_forms:
+            mapped = CORE_CONCEPTS.get(form)
+            if mapped and mapped != 'ProperNoun':
                 return False
-            return True
+
+        for form in lookup_forms:
+            existing_word = self.lexicon.find_by_english(form)
+            if existing_word:
+                existing_entry = self.lexicon.get_entry(existing_word) or {}
+                existing_pos = str(existing_entry.get('part_of_speech') or '').strip()
+                if existing_pos and existing_pos != 'ProperNoun':
+                    return False
+                return True
 
         if lowered in {'the', 'a', 'an', 'and', 'or', 'but', 'if', 'to', 'in', 'on', 'at', 'from', 'with', 'without'}:
             return False
@@ -597,18 +763,18 @@ class Language:
         # Sentence-initial capitalization is ambiguous, but unknown capitalized
         # words are more likely names than grammatical words.
         if is_sentence_start:
-            if mapped and mapped != 'ProperNoun':
-                return False
             return True
 
         return True
 
     def _dictionary_candidate_forms(self, token):
-        base = str(token or '').strip().lower()
+        base = self._normalize_english_token(token) or str(token or '').strip().lower()
         if not base:
             return []
 
         forms = {base}
+        if "'" in base:
+            forms.add(base.replace("'", ''))
         frontier = {base}
         suffixes = []
         prefixes = []
@@ -667,24 +833,35 @@ class Language:
                 self.lexicon.add_entry(entry_data)
 
     def translate_single_word(self, english_word, context_pos_tag=None):
-        norm_word = english_word.lower()
-        conlang_word = self.lexicon.find_by_english(norm_word)
-        if conlang_word:
-            return conlang_word
+        lookup_forms = self._english_lookup_forms(english_word)
+        norm_word = lookup_forms[0] if lookup_forms else self._normalize_english_token(english_word) or str(english_word or '').lower()
 
-        pos_tag = context_pos_tag or CORE_CONCEPTS.get(norm_word, None)
+        for form in lookup_forms or [norm_word]:
+            conlang_word = self.lexicon.find_by_english(form)
+            if conlang_word:
+                return conlang_word
+
+        pos_tag = context_pos_tag
+        if pos_tag is None:
+            for form in lookup_forms or [norm_word]:
+                mapped = CORE_CONCEPTS.get(form)
+                if mapped is not None:
+                    pos_tag = mapped
+                    break
+
         entry_data = self.word_generator.generate_word_for_meaning(norm_word, pos_tag)
         if entry_data:
             if self.lexicon.add_entry(entry_data):
                 return entry_data['word']
-            existing = self.lexicon.find_by_english(norm_word)
-            if existing:
-                return existing
+            for form in lookup_forms or [norm_word]:
+                existing = self.lexicon.find_by_english(form)
+                if existing:
+                    return existing
             return f"[{norm_word.upper()}_ADD_ERR]"
         return f"[{norm_word.upper()}_GEN_ERR]"
 
     def lookup_dictionary_entry(self, query):
-        normalized_query = str(query or '').strip()
+        normalized_query = str(query or '').strip().replace('’', "'").replace('‘', "'").replace('`', "'")
         if not normalized_query:
             return {
                 'query': '',
@@ -694,8 +871,8 @@ class Language:
             }
 
         cleaned_query = re.sub(r"^[^A-Za-z0-9']+|[^A-Za-z0-9']+$", '', normalized_query)
-        normalized_lower = normalized_query.lower()
-        cleaned_lower = cleaned_query.lower() if cleaned_query else normalized_lower
+        normalized_lower = self._normalize_english_token(normalized_query) or normalized_query.lower()
+        cleaned_lower = self._normalize_english_token(cleaned_query) if cleaned_query else normalized_lower
 
         candidate_values = [
             normalized_query,
@@ -727,22 +904,42 @@ class Language:
 
         english_candidates = []
         for value in [cleaned_lower, normalized_lower]:
+            for form in self._english_lookup_forms(value):
+                if form and form not in english_candidates:
+                    english_candidates.append(form)
             if value and value not in english_candidates:
                 english_candidates.append(value)
-            if value.endswith('ing') and len(value) > 5:
+            if value and value.endswith('ing') and len(value) > 5:
                 english_candidates.append(value[:-3])
-            if value.endswith('ed') and len(value) > 4:
+            if value and value.endswith('ed') and len(value) > 4:
                 english_candidates.append(value[:-2])
-            if value.endswith('es') and len(value) > 4:
+            if value and value.endswith('es') and len(value) > 4:
                 english_candidates.append(value[:-2])
-            if value.endswith('s') and len(value) > 3:
+            if value and value.endswith('s') and len(value) > 3:
                 english_candidates.append(value[:-1])
 
         for value in list(english_candidates):
+            if not value:
+                continue
+
+            if value.endswith("n't") and len(value) > 3:
+                stem = value[:-3]
+                if stem == 'ca':
+                    stem = 'can'
+                elif stem == 'wo':
+                    stem = 'will'
+                if stem:
+                    english_candidates.append(stem)
+                english_candidates.append('not')
+
             if value and len(value) > 2 and not value.endswith('s'):
                 english_candidates.append(f'{value}s')
 
-        english_candidates = [value for value in english_candidates if value]
+        deduped_english_candidates = []
+        for value in english_candidates:
+            if value and value not in deduped_english_candidates:
+                deduped_english_candidates.append(value)
+        english_candidates = deduped_english_candidates
 
         for english_candidate in english_candidates:
             translated_word = self.lexicon.find_by_english(english_candidate)
@@ -918,18 +1115,24 @@ class Language:
                 continue
 
             simple_pos = self._map_nltk_tag(tag) or 'Noun'
-            lower_word = word.lower()
+            normalized_word = self._normalize_english_token(word) or word.lower()
             is_proper_noun = self._is_likely_proper_noun(word, tag, is_sentence_start=is_sentence_start)
 
             if is_proper_noun:
-                existing_name = self.lexicon.find_by_english(lower_word) or self.lexicon.find_by_english(word)
+                existing_name = None
+                for form in self._english_lookup_forms(word):
+                    existing_name = self.lexicon.find_by_english(form)
+                    if existing_name:
+                        break
+                if existing_name is None:
+                    existing_name = self.lexicon.find_by_english(normalized_word) or self.lexicon.find_by_english(word)
                 translated = existing_name if existing_name else self.generate_proper_noun(word, category='person')
                 translated = self._match_source_casing(translated, word, capitalize_title=True)
                 simple_pos = 'ProperNoun'
             else:
                 if str(tag).upper().startswith('NNP') and simple_pos == 'ProperNoun':
                     simple_pos = 'Noun'
-                translated = self.translate_single_word(lower_word, context_pos_tag=simple_pos)
+                translated = self.translate_single_word(normalized_word, context_pos_tag=simple_pos)
                 translated = self._match_source_casing(translated, word, capitalize_title=False)
 
             translated_stream.append({
@@ -939,7 +1142,7 @@ class Language:
                 'is_punctuation': False,
                 'is_proper_noun': is_proper_noun,
                 'source_token': word,
-                'source_normalized': lower_word,
+                'source_normalized': normalized_word,
             })
             is_sentence_start = False
 
