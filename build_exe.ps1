@@ -52,6 +52,15 @@ if ($buildDesktop) {
 
         Write-Host 'Building desktop EXE packages...'
         & npm.cmd run build:desktop
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning 'Standard desktop build failed.'
+            Write-Warning 'Retrying without EXE resource editing/signing to bypass winCodeSign symlink requirements...'
+            Write-Warning 'Fallback mode may omit embedded EXE icon/version metadata.'
+            & npm.cmd run build:desktop:no-win-edit
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Desktop build failed even after fallback retry.'
+            }
+        }
     }
     finally {
         Pop-Location

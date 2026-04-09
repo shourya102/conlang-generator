@@ -10,8 +10,9 @@
     "dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
     "start": "electron .",
     "build": "vite build",
-    "build:desktop": "npm run build && electron-builder --win --dir",
-    "build:desktop:installer": "npm run build && electron-builder --win nsis portable",
+    "build:desktop": "npm run build && electron-builder --win nsis portable -c.win.icon=../icon.ico",
+    "build:desktop:no-win-edit": "npm run build && electron-builder --win nsis portable -c.win.icon=../icon.ico --config.win.signAndEditExecutable=false",
+    "build:desktop:installer": "npm run build && electron-builder --win nsis portable -c.win.icon=../icon.ico",
     "build:desktop:dir": "npm run build && electron-builder --win --dir",
     "preview": "vite preview"
   },
@@ -49,6 +50,10 @@
     ],
     "extraResources": [
       {
+        "from": "../icon.ico",
+        "to": "icon.ico"
+      },
+      {
         "from": "../src",
         "to": "backend/src",
         "filter": [
@@ -75,6 +80,12 @@
           ]
         }
       ]
+    },
+    "nsis": {
+      "artifactName": "conlang-studio-setup-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "conlang-studio-portable-${version}-${arch}.${ext}"
     }
   }
 }

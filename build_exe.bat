@@ -73,7 +73,13 @@ if "%BUILD_DESKTOP%"=="1" (
 
     echo Building desktop EXE packages...
     call npm.cmd run build:desktop
-    if errorlevel 1 goto :error
+    if errorlevel 1 (
+        echo Standard desktop build failed.
+        echo Retrying without EXE resource editing/signing to bypass winCodeSign symlink requirements...
+        echo NOTE: Fallback mode may omit embedded EXE icon/version metadata.
+        call npm.cmd run build:desktop:no-win-edit
+        if errorlevel 1 goto :error
+    )
 
     popd
     set DID_PUSHD=0
