@@ -78,6 +78,11 @@ class Language:
         "'s": 'be',
     }
 
+    APOSTROPHE_S_CONTRACTION_BASES = {
+        'it', 'he', 'she', 'that', 'there', 'what', 'who', 'where', 'when',
+        'why', 'how', 'here', 'let', 'i', 'you', 'we', 'they',
+    }
+
     def __init__(
         self,
         phonology=None,
@@ -117,6 +122,8 @@ class Language:
 
         if bootstrap and self.lexicon.get_size() < len(CORE_CONCEPTS) // 2:
             self._bootstrap_lexicon(CORE_CONCEPTS)
+
+        self._repair_lexicon_part_of_speech()
 
     def _build_phonology(self, phonology):
         if isinstance(phonology, Phonology):
@@ -357,6 +364,8 @@ class Language:
 
         for suffix, expansion in self.CONTRACTION_SUFFIX_EXPANSIONS.items():
             if normalized.endswith(suffix) and len(normalized) > len(suffix):
+                if suffix == "'s" and not self._is_contraction_like(normalized):
+                    continue
                 stem = normalized[:-len(suffix)]
                 if suffix == "n't":
                     if stem == 'ca':
@@ -378,11 +387,111 @@ class Language:
         if normalized in self.TOKEN_NORMALIZATION_ALIASES.values() and "'" in normalized:
             return True
 
-        for suffix in self.CONTRACTION_SUFFIX_EXPANSIONS:
+        if normalized.endswith("n't") and len(normalized) > len("n't"):
+            return True
+
+        for suffix in {"'ve", "'re", "'m", "'ll", "'d"}:
             if normalized.endswith(suffix) and len(normalized) > len(suffix):
                 return True
 
+        if normalized.endswith("'s") and len(normalized) > len("'s"):
+            stem = normalized[:-2]
+            if stem in self.APOSTROPHE_S_CONTRACTION_BASES:
+                return True
+
         return False
+
+    def _canonical_part_of_speech(self, english_word, fallback=None):
+        for form in self._english_lookup_forms(english_word):
+            mapped = CORE_CONCEPTS.get(form)
+            if mapped:
+                return mapped
+
+        normalized = self._normalize_english_token(english_word)
+        if normalized and self._is_contraction_like(normalized):
+            return 'Adverb' if normalized.endswith("n't") else 'Verb'
+
+        return fallback
+
+    def _normalize_entry_part_of_speech(self, entry_data):
+        if not isinstance(entry_data, dict):
+            return entry_data
+
+        english_meaning = entry_data.get('english_meaning', '')
+        current_pos = str(entry_data.get('part_of_speech') or '').strip()
+        canonical_pos = self._canonical_part_of_speech(english_meaning, fallback=current_pos or None)
+        if canonical_pos and canonical_pos != current_pos:
+            entry_data['part_of_speech'] = canonical_pos
+
+        return entry_data
+
+    def _repair_lexicon_part_of_speech(self):
+        for _conlang_word, entry_data in self.lexicon.entries.items():
+            self._normalize_entry_part_of_speech(entry_data)
+
+    def _merge_contraction_tokens(self, tagged_tokens):
+        if not tagged_tokens:
+            return []
+
+        contraction_suffixes = {"n't", "'s", "'m", "'re", "'ve", "'d", "'ll"}
+        merged = []
+
+        for token, tag in tagged_tokens:
+            token_text = str(token or '').replace('’', "'").replace('‘', "'").replace('`', "'")
+            if merged and token_text in contraction_suffixes:
+                previous_token, _previous_tag = merged[-1]
+                if previous_token and previous_token[-1:].isalpha():
+                    combined = f"{previous_token}{token_text}"
+                    combined_tag = self._simple_tag_for_token(combined, is_sentence_start=False)
+                    merged[-1] = (combined, combined_tag)
+                    continue
+
+            merged.append((token_text, tag))
+
+        return merged
+
+    def _retag_contraction_tokens(self, tagged_tokens):
+        if not tagged_tokens:
+            return []
+
+        sentence_endings = {'.', '?', '!'}
+        retagged = []
+        is_sentence_start = True
+
+        for token, tag in tagged_tokens:
+            token_text = str(token or '')
+            token_tag = tag
+
+            normalized = self._normalize_english_token(token_text)
+            if normalized.endswith("n't") and len(normalized) > len("n't"):
+                stem = normalized[:-3]
+                irregular_map = {
+                    'ca': 'can',
+                    'wo': 'will',
+                    'sha': 'shall',
+                    'ai': 'be',
+                }
+                stem = irregular_map.get(stem, stem)
+                if stem:
+                    expanded_tokens = [stem, 'not']
+                    for expanded in expanded_tokens:
+                        expanded_tag = self._simple_tag_for_token(expanded, is_sentence_start=is_sentence_start)
+                        retagged.append((expanded, expanded_tag))
+                        is_sentence_start = False
+                    continue
+
+            if self._is_contraction_like(token_text):
+                token_tag = self._simple_tag_for_token(token_text, is_sentence_start=is_sentence_start)
+
+            retagged.append((token_text, token_tag))
+
+            if len(token_text) == 1 and not token_text.isalnum():
+                if token_text in sentence_endings:
+                    is_sentence_start = True
+            else:
+                is_sentence_start = False
+
+        return retagged
 
     def _map_nltk_tag(self, nltk_tag):
         tag = str(nltk_tag).upper()
@@ -596,6 +705,7 @@ class Language:
                 existing_word = self.lexicon.find_by_english(form)
                 if existing_word:
                     existing_entry = self.lexicon.get_entry(existing_word) or {}
+                    self._normalize_entry_part_of_speech(existing_entry)
                     existing_pos = str(existing_entry.get('part_of_speech') or '').strip()
                     if existing_pos in pos_to_nltk:
                         return pos_to_nltk[existing_pos]
@@ -626,10 +736,12 @@ class Language:
             try:
                 tokens = nltk.word_tokenize(normalized_text)
                 tagged_tokens = nltk.pos_tag(tokens)
-                return [
+                normalized_tagged = [
                     (str(token).replace('’', "'").replace('‘', "'").replace('`', "'"), tag)
                     for token, tag in tagged_tokens
                 ]
+                merged_tagged = self._merge_contraction_tokens(normalized_tagged)
+                return self._retag_contraction_tokens(merged_tagged)
             except Exception:
                 self.nltk_enabled = False
 
@@ -708,7 +820,8 @@ class Language:
                     previous_word = self._normalize_english_token(token) or token.lower()
                     previous_tag = tag
 
-        return tagged
+        merged_tagged = self._merge_contraction_tokens(tagged)
+        return self._retag_contraction_tokens(merged_tagged)
 
     def _looks_like_all_caps(self, token):
         text = str(token or '')
@@ -752,6 +865,7 @@ class Language:
             existing_word = self.lexicon.find_by_english(form)
             if existing_word:
                 existing_entry = self.lexicon.get_entry(existing_word) or {}
+                self._normalize_entry_part_of_speech(existing_entry)
                 existing_pos = str(existing_entry.get('part_of_speech') or '').strip()
                 if existing_pos and existing_pos != 'ProperNoun':
                     return False
@@ -839,6 +953,8 @@ class Language:
         for form in lookup_forms or [norm_word]:
             conlang_word = self.lexicon.find_by_english(form)
             if conlang_word:
+                existing_entry = self.lexicon.get_entry(conlang_word)
+                self._normalize_entry_part_of_speech(existing_entry)
                 return conlang_word
 
         pos_tag = context_pos_tag
@@ -894,6 +1010,7 @@ class Language:
         for candidate in candidates:
             entry = self.lexicon.get_entry(candidate)
             if entry:
+                self._normalize_entry_part_of_speech(entry)
                 match_type = 'conlang_word' if candidate.lower() == cleaned_lower else 'inflected_conlang'
                 return {
                     'query': normalized_query,
@@ -946,6 +1063,7 @@ class Language:
             if translated_word:
                 entry = self.lexicon.get_entry(translated_word)
                 if entry:
+                    self._normalize_entry_part_of_speech(entry)
                     match_type = 'english_meaning' if english_candidate == cleaned_lower else 'english_lemma'
                     return {
                         'query': normalized_query,
@@ -956,6 +1074,7 @@ class Language:
 
         for english_candidate in english_candidates:
             for _conlang_word, entry in self.lexicon.entries.items():
+                self._normalize_entry_part_of_speech(entry)
                 meaning = str(entry.get('english_meaning') or '').strip().lower()
                 if not meaning:
                     continue
@@ -1176,11 +1295,20 @@ class Language:
                 lookup = self.lookup_dictionary_entry(translated_token)
                 if lookup.get('found') and lookup.get('entry'):
                     dictionary_entry = lookup['entry']
+                    self._normalize_entry_part_of_speech(dictionary_entry)
                     lookup_match = lookup.get('match')
+
+                    dictionary_pos = dictionary_entry.get('part_of_speech', simple_pos) or simple_pos
+                    if not bool(item.get('is_proper_noun')) and dictionary_pos == 'ProperNoun':
+                        dictionary_pos = self._canonical_part_of_speech(
+                            dictionary_entry.get('english_meaning', ''),
+                            fallback=simple_pos if simple_pos != 'ProperNoun' else 'Noun',
+                        )
+
                     dictionary_words[dictionary_entry.get('word', translated_token)] = {
                         'word': dictionary_entry.get('word', translated_token),
                         'english_meaning': dictionary_entry.get('english_meaning', ''),
-                        'part_of_speech': dictionary_entry.get('part_of_speech', simple_pos),
+                        'part_of_speech': dictionary_pos,
                         'prefix': dictionary_entry.get('prefix', ''),
                         'root': dictionary_entry.get('root', ''),
                         'suffix': dictionary_entry.get('suffix', ''),
@@ -1190,6 +1318,11 @@ class Language:
             if dictionary_entry:
                 english_meaning = dictionary_entry.get('english_meaning', '') or item.get('source_normalized', '')
                 part_of_speech = dictionary_entry.get('part_of_speech', simple_pos) or simple_pos
+                if not bool(item.get('is_proper_noun')) and part_of_speech == 'ProperNoun':
+                    part_of_speech = self._canonical_part_of_speech(
+                        english_meaning,
+                        fallback=simple_pos if simple_pos != 'ProperNoun' else 'Noun',
+                    )
                 prefix = dictionary_entry.get('prefix', '')
                 root = dictionary_entry.get('root', '')
                 suffix = dictionary_entry.get('suffix', '')
@@ -1290,6 +1423,8 @@ class Language:
 
         if regenerate_lexicon and bootstrap:
             self._bootstrap_lexicon(CORE_CONCEPTS)
+
+        self._repair_lexicon_part_of_speech()
 
         return self.style_preset
 
